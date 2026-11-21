@@ -95,7 +95,8 @@ ticket-checkout/
 - `app` imports `domain` and defines the ports. It contains no SQL, HTTP or Redis code.
 - `adapters` implement the ports. Only `adapters/postgres` writes SQL.
 - `cmd` wires adapters into use cases and starts the process.
-- Enforce the direction with a small test that runs `go list -deps` and fails on a forbidden import.
+- Enforce the direction with `depguard` rules in `.golangci.yml`. Each layer gets a strict allow-list of `$gostd` plus the inner packages it may import, so a forbidden import fails lint and CI.
+- `depguard` works per file, so it needs no build or `go list` step and adds no test runtime.
 
 ### Where the rules live
 
@@ -547,7 +548,7 @@ The project is done when every invariant has a passing test and every injected f
 
 Build in six phases and move on only when a phase's exit criteria pass. Phases 1 to 3 make a complete project; 4 to 6 are extensions.
 
-1. **Foundation.** Repo, module layout with the domain, app and adapters packages, an import-direction test, docker-compose with PostgreSQL, migrations, pgx pool, config, `slog`, `/healthz` and `/readyz`, event and seat read endpoints, CI with lint and unit tests.
+1. **Foundation.** Repo, module layout with the domain, app and adapters packages, `depguard` import rules, docker-compose with PostgreSQL, migrations, pgx pool, config, `slog`, `/healthz` and `/readyz`, event and seat read endpoints, CI with lint and unit tests.
    - Exit: `docker compose up` serves the read endpoints and CI is green.
 2. **Seat reservation.** Acquire, release and expiry sweeper, outbox writes, invariant checker, use cases behind ports, and ADRs on PostgreSQL versus Redis and on where invariants live.
    - Exit: C1 and C2 pass with `-race`; invariants 1, 2, 3 and 5 have tests; the domain-versus-SQL agreement test passes.
