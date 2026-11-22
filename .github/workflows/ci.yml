@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: asdf-vm/actions/setup@v4
+        with:
+          asdf_version: v0.20.0
+          github_token: ${{ github.token }}
+      - name: Add asdf plugins
+        run: |
+          asdf plugin add golang || true
+          asdf plugin add golangci-lint || true
+      - uses: asdf-vm/actions/install@v4
+        with:
+          github_token: ${{ github.token }}
+      - run: golangci-lint run
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: asdf-vm/actions/setup@v4
+        with:
+          asdf_version: v0.20.0
+          github_token: ${{ github.token }}
+      - name: Add asdf plugins
+        run: |
+          asdf plugin add golang || true
+          asdf plugin add golangci-lint || true
+      - uses: asdf-vm/actions/install@v4
+        with:
+          github_token: ${{ github.token }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.asdf/installs/golang/*/packages/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - run: go test -race ./...

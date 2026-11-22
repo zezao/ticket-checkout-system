@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS payment_attempts;
+ALTER TABLE IF EXISTS seats DROP CONSTRAINT IF EXISTS seats_current_hold_matches_seat_fk;
+DROP TABLE IF EXISTS holds;
+DROP TABLE IF EXISTS seats;
+DROP TABLE IF EXISTS events;
+DROP TYPE IF EXISTS payment_status;
+DROP TYPE IF EXISTS hold_status;
+DROP TYPE IF EXISTS seat_status;

@@ -31,6 +31,8 @@ linters:
             - github.com/zezao/ticket-checkout-system/internal/domain/payment
             - github.com/zezao/ticket-checkout-system/internal/domain/order
             - github.com/zezao/ticket-checkout-system/internal/app
+            - github.com/jackc/pgx
+            - github.com/google/uuid
         worker:
           files:
             - "**/internal/worker/**"

@@ -1,0 +1,14 @@
+.git
+.github
+.gitignore
+bin
+tmp
+docs
+test
+bench
+deploy
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+.golangci.yml

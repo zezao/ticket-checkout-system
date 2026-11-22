@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/zezao/ticket-checkout-system/internal/adapters/httpapi"
+	"github.com/zezao/ticket-checkout-system/internal/adapters/postgres"
+	"github.com/zezao/ticket-checkout-system/internal/app"
 	"github.com/zezao/ticket-checkout-system/internal/config"
 )
 
@@ -28,17 +30,30 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL, cfg.PGMaxConns)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	store := postgres.NewCatalog(pool)
+	catalog := app.NewCatalog(store, store)
+
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewHandler(),
+		Addr: cfg.HTTPAddr,
+		Handler: httpapi.NewHandler(httpapi.Deps{
+			Postgres: pool,
+			Catalog:  catalog,
+			Logger:   logger,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
