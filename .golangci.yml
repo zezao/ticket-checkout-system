@@ -1,0 +1,54 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        domain:
+          files:
+            - "**/internal/domain/**"
+          allow:
+            - $gostd
+        app:
+          files:
+            - "**/internal/app/**"
+          allow:
+            - $gostd
+            - github.com/zezao/ticket-checkout-system/internal/domain
+            - github.com/zezao/ticket-checkout-system/internal/domain/reservation
+            - github.com/zezao/ticket-checkout-system/internal/domain/payment
+            - github.com/zezao/ticket-checkout-system/internal/domain/order
+        adapters:
+          files:
+            - "**/internal/adapters/**"
+          allow:
+            - $gostd
+            - github.com/zezao/ticket-checkout-system/internal/domain
+            - github.com/zezao/ticket-checkout-system/internal/domain/reservation
+            - github.com/zezao/ticket-checkout-system/internal/domain/payment
+            - github.com/zezao/ticket-checkout-system/internal/domain/order
+            - github.com/zezao/ticket-checkout-system/internal/app
+        worker:
+          files:
+            - "**/internal/worker/**"
+          allow:
+            - $gostd
+            - github.com/zezao/ticket-checkout-system/internal/domain
+            - github.com/zezao/ticket-checkout-system/internal/domain/reservation
+            - github.com/zezao/ticket-checkout-system/internal/domain/payment
+            - github.com/zezao/ticket-checkout-system/internal/domain/order
+            - github.com/zezao/ticket-checkout-system/internal/app
+        cmd:
+          files:
+            - "**/cmd/**"
+          allow:
+            - $gostd
+            - github.com/zezao/ticket-checkout-system
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
