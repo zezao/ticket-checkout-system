@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/zezao/ticket-checkout-system/internal/adapters/httpapi"
 	"github.com/zezao/ticket-checkout-system/internal/adapters/postgres"
 	"github.com/zezao/ticket-checkout-system/internal/app"
@@ -22,6 +24,14 @@ func main() {
 		logger.Error("api exited with error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func newHoldID() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
 }
 
 func run(logger *slog.Logger) error {
@@ -41,13 +51,16 @@ func run(logger *slog.Logger) error {
 
 	store := postgres.NewCatalog(pool)
 	catalog := app.NewCatalog(store, store)
+	holds := postgres.NewHoldStore(pool)
+	reservations := app.NewReservation(holds, newHoldID, cfg.HoldTTL)
 
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewHandler(httpapi.Deps{
-			Postgres: pool,
-			Catalog:  catalog,
-			Logger:   logger,
+			Postgres:     pool,
+			Catalog:      catalog,
+			Reservations: reservations,
+			Logger:       logger,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

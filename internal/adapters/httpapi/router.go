@@ -27,9 +27,10 @@ type Catalog interface {
 
 // Deps carries the adapters the HTTP API needs.
 type Deps struct {
-	Postgres Pinger
-	Catalog  Catalog
-	Logger   *slog.Logger
+	Postgres     Pinger
+	Catalog      Catalog
+	Reservations Reservations
+	Logger       *slog.Logger
 }
 
 // NewHandler builds the API router.
@@ -38,7 +39,11 @@ func NewHandler(deps Deps) http.Handler {
 		deps.Logger = slog.Default()
 	}
 
-	h := &handlers{catalog: deps.Catalog, logger: deps.Logger}
+	h := &handlers{
+		catalog:      deps.Catalog,
+		reservations: deps.Reservations,
+		logger:       deps.Logger,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
@@ -46,6 +51,9 @@ func NewHandler(deps Deps) http.Handler {
 	mux.HandleFunc("GET /events", h.listEvents)
 	mux.HandleFunc("GET /events/{id}", h.getEvent)
 	mux.HandleFunc("GET /events/{id}/seats", h.listSeats)
+	mux.HandleFunc("POST /events/{id}/holds", h.createHold)
+	mux.HandleFunc("GET /holds/{id}", h.getHold)
+	mux.HandleFunc("DELETE /holds/{id}", h.releaseHold)
 	mux.HandleFunc("/", handleNotFound)
 
 	return withRequestID(withLogging(deps.Logger, withRecovery(deps.Logger, mux)))

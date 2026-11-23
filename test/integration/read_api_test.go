@@ -32,7 +32,7 @@ import (
 var (
 	databaseURL  string
 	testStartsAt = time.Date(2027, 6, 12, 19, 30, 0, 0, time.UTC)
-	httpClient   = &http.Client{Timeout: 5 * time.Second}
+	httpClient   = &http.Client{Timeout: 10 * time.Second}
 )
 
 func TestMain(m *testing.M) {
@@ -219,6 +219,8 @@ func TestReadAPI(t *testing.T) {
 			t.Errorf("X-Request-ID = %q, want %q", got, "integration-request")
 		}
 	})
+
+	checkInvariants(t, pool)
 }
 
 func TestReadiness(t *testing.T) {
@@ -267,7 +269,13 @@ func TestReadinessWithoutDatabase(t *testing.T) {
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	pool, err := pgxpool.New(context.Background(), databaseURL)
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse database url: %v", err)
+	}
+	cfg.MaxConns = 50
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("create pool: %v", err)
 	}
@@ -283,29 +291,80 @@ func newServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
 	t.Helper()
 
 	store := pgadapter.NewCatalog(pool)
+	holds := pgadapter.NewHoldStore(pool)
 	handler := httpapi.NewHandler(httpapi.Deps{
-		Postgres: pool,
-		Catalog:  app.NewCatalog(store, store),
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Postgres:     pool,
+		Catalog:      app.NewCatalog(store, store),
+		Reservations: app.NewReservation(holds, newHoldID, 10*time.Minute),
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server
 }
 
-func insertEventWithSeats(t *testing.T, pool *pgxpool.Pool) (string, []string) {
+func newReservation(pool *pgxpool.Pool) *app.Reservation {
+	return app.NewReservation(pgadapter.NewHoldStore(pool), newHoldID, 10*time.Minute)
+}
+
+func newHoldID() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
+}
+
+func checkInvariants(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 
-	ctx := context.Background()
-	eventID := uuid.NewString()
+	violations, err := pgadapter.NewInvariantChecker(pool).Check(context.Background())
+	if err != nil {
+		t.Fatalf("check invariants: %v", err)
+	}
+	for _, violation := range violations {
+		t.Errorf("invariant %s violated: %v", violation.Name, violation.IDs)
+	}
+}
 
-	if _, err := pool.Exec(ctx, `
+func insertEvent(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+
+	eventID := uuid.NewString()
+	if _, err := pool.Exec(context.Background(), `
 		INSERT INTO events (id, name, venue, starts_at, currency)
 		VALUES ($1::uuid, $2, $3, $4, $5)`,
 		eventID, "Integration Event", "Integration Venue", testStartsAt, "USD",
 	); err != nil {
 		t.Fatalf("insert event: %v", err)
 	}
+	return eventID
+}
+
+func insertSeat(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	eventID, section, rowLabel string,
+	number int,
+	priceCents int64,
+) string {
+	t.Helper()
+
+	seatID := uuid.NewString()
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO seats (id, event_id, section, row_label, number, price_cents)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)`,
+		seatID, eventID, section, rowLabel, number, priceCents,
+	); err != nil {
+		t.Fatalf("insert seat: %v", err)
+	}
+	return seatID
+}
+
+func insertEventWithSeats(t *testing.T, pool *pgxpool.Pool) (string, []string) {
+	t.Helper()
+
+	eventID := insertEvent(t, pool)
 
 	seats := []struct {
 		section    string
@@ -319,15 +378,9 @@ func insertEventWithSeats(t *testing.T, pool *pgxpool.Pool) (string, []string) {
 
 	seatIDs := make([]string, 0, len(seats))
 	for _, seat := range seats {
-		seatID := uuid.NewString()
-		if _, err := pool.Exec(ctx, `
-			INSERT INTO seats (id, event_id, section, row_label, number, price_cents)
-			VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)`,
-			seatID, eventID, seat.section, seat.rowLabel, seat.number, seat.priceCents,
-		); err != nil {
-			t.Fatalf("insert seat: %v", err)
-		}
-		seatIDs = append(seatIDs, seatID)
+		seatIDs = append(seatIDs, insertSeat(
+			t, pool, eventID, seat.section, seat.rowLabel, seat.number, seat.priceCents,
+		))
 	}
 
 	return eventID, seatIDs

@@ -49,6 +49,7 @@ linters:
           allow:
             - $gostd
             - github.com/zezao/ticket-checkout-system
+            - github.com/google/uuid
 
 formatters:
   enable:

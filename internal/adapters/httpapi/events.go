@@ -13,8 +13,9 @@ import (
 )
 
 type handlers struct {
-	catalog Catalog
-	logger  *slog.Logger
+	catalog      Catalog
+	reservations Reservations
+	logger       *slog.Logger
 }
 
 type eventResponse struct {
