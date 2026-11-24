@@ -15,6 +15,7 @@ import (
 type handlers struct {
 	catalog      Catalog
 	reservations Reservations
+	payments     Payments
 	logger       *slog.Logger
 }
 

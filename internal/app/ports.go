@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/zezao/ticket-checkout-system/internal/domain/payment"
 	"github.com/zezao/ticket-checkout-system/internal/domain/reservation"
 )
 
@@ -59,6 +60,88 @@ type HoldStore interface {
 // ExpiryStore retires expired holds in batches.
 type ExpiryStore interface {
 	ExpireBatch(ctx context.Context, limit int) (int, error)
+}
+
+// ChargeRequest is one provider call for one attempt.
+type ChargeRequest struct {
+	IdempotencyKey string
+	AmountCents    int64
+	Currency       string
+}
+
+// ChargeStatus is the provider's answer for one call.
+type ChargeStatus string
+
+const (
+	ChargeSucceeded  ChargeStatus = "succeeded"
+	ChargeDeclined   ChargeStatus = "declined"
+	ChargeProcessing ChargeStatus = "processing"
+	ChargeUnknown    ChargeStatus = "unknown"
+)
+
+// ChargeResult is the provider's answer without transport details.
+type ChargeResult struct {
+	Status ChargeStatus
+}
+
+// Provider is the payment provider port. Both calls are idempotent on the key.
+type Provider interface {
+	CreateCharge(ctx context.Context, req ChargeRequest) (ChargeResult, error)
+	GetCharge(ctx context.Context, req ChargeRequest) (ChargeResult, error)
+}
+
+// StartPaymentRequest is the input to the start payment use case.
+type StartPaymentRequest struct {
+	HoldID         string
+	UserID         string
+	IdempotencyKey string
+	Traceparent    string
+}
+
+// StartPaymentParams is the atomic operation the payment store performs.
+type StartPaymentParams struct {
+	AttemptID      string
+	HoldID         string
+	UserID         string
+	IdempotencyKey string
+	Traceparent    string
+	Deadline       time.Duration
+}
+
+// PaymentStore owns the payment attempt reads and the start transition.
+type PaymentStore interface {
+	Start(ctx context.Context, params StartPaymentParams) (payment.Attempt, error)
+	GetForHold(ctx context.Context, holdID, userID string) (payment.Attempt, bool, error)
+}
+
+// SettlementOutcome is the outcome settlement applies to an attempt.
+type SettlementOutcome string
+
+const (
+	SettlementSucceeded SettlementOutcome = "succeeded"
+	SettlementDeclined  SettlementOutcome = "declined"
+	SettlementPending   SettlementOutcome = "pending"
+)
+
+// SettleParams is one guarded settlement update.
+type SettleParams struct {
+	AttemptID string
+	Outcome   SettlementOutcome
+	LastError string
+	Backoff   time.Duration
+}
+
+// SettleResult reports whether the attempt was still open.
+type SettleResult struct {
+	Applied bool
+	Attempt payment.Attempt
+}
+
+// SettlementStore claims due attempts and applies provider results atomically.
+type SettlementStore interface {
+	ClaimDue(ctx context.Context, lease time.Duration, limit int) ([]payment.Attempt, error)
+	ApplyResult(ctx context.Context, params SettleParams) (SettleResult, error)
+	CountOverdue(ctx context.Context) (int, error)
 }
 
 // InvariantViolation describes one failed data invariant.

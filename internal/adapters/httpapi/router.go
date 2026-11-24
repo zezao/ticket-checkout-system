@@ -30,6 +30,7 @@ type Deps struct {
 	Postgres     Pinger
 	Catalog      Catalog
 	Reservations Reservations
+	Payments     Payments
 	Logger       *slog.Logger
 }
 
@@ -42,6 +43,7 @@ func NewHandler(deps Deps) http.Handler {
 	h := &handlers{
 		catalog:      deps.Catalog,
 		reservations: deps.Reservations,
+		payments:     deps.Payments,
 		logger:       deps.Logger,
 	}
 
@@ -54,6 +56,7 @@ func NewHandler(deps Deps) http.Handler {
 	mux.HandleFunc("POST /events/{id}/holds", h.createHold)
 	mux.HandleFunc("GET /holds/{id}", h.getHold)
 	mux.HandleFunc("DELETE /holds/{id}", h.releaseHold)
+	mux.HandleFunc("POST /holds/{id}/payment", h.startPayment)
 	mux.HandleFunc("/", handleNotFound)
 
 	return withRequestID(withLogging(deps.Logger, withRecovery(deps.Logger, mux)))

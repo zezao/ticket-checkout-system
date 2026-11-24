@@ -60,6 +60,8 @@ services:
     environment:
       DATABASE_URL: postgres://tickets:tickets@postgres:5432/tickets?sslmode=disable
       HTTP_ADDR: ":8080"
+      HOLD_TTL: ${HOLD_TTL:-10m}
+      PAYMENT_DEADLINE: ${PAYMENT_DEADLINE:-15m}
     ports:
       - "8080:8080"
     command: ["/app/api"]
@@ -72,6 +74,10 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://tickets:tickets@postgres:5432/tickets?sslmode=disable
+      PAYMENT_LEASE: ${PAYMENT_LEASE:-30s}
+      PROVIDER_TIMEOUT: ${PROVIDER_TIMEOUT:-10s}
+      SWEEP_INTERVAL: ${SWEEP_INTERVAL:-5s}
+      MOCK_BEHAVIOR: ${MOCK_BEHAVIOR:-success}
     command: ["/app/worker"]
 
 volumes:

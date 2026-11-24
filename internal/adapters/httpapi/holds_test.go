@@ -60,6 +60,15 @@ func serveHold(
 	method, path, body string,
 	headers map[string]string,
 ) *httptest.ResponseRecorder {
+	return serveHoldWithPayments(reservations, &fakePayments{}, method, path, body, headers)
+}
+
+func serveHoldWithPayments(
+	reservations Reservations,
+	payments Payments,
+	method, path, body string,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
 	var reader io.Reader
 	if body != "" {
 		reader = strings.NewReader(body)
@@ -74,6 +83,7 @@ func serveHold(
 	NewHandler(Deps{
 		Postgres:     stubPinger{},
 		Reservations: reservations,
+		Payments:     payments,
 		Logger:       testLogger(),
 	}).ServeHTTP(rec, req)
 

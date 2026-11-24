@@ -94,7 +94,17 @@ func (h *handlers) createHold(w http.ResponseWriter, r *http.Request) {
 	if !result.Created {
 		status = http.StatusOK
 	}
-	writeJSON(w, status, newHoldEnvelope(result.Hold))
+
+	envelope := newHoldEnvelope(result.Hold)
+	if result.Hold.Status == reservation.HoldPaymentPending {
+		paymentStatus, err := h.paymentForHold(r.Context(), result.Hold.ID, userID)
+		if err != nil {
+			h.internalError(w, r, "get payment", err)
+			return
+		}
+		envelope.Payment = paymentStatus
+	}
+	writeJSON(w, status, envelope)
 }
 
 func (h *handlers) getHold(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +127,14 @@ func (h *handlers) getHold(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, newHoldEnvelope(hold))
+	envelope := newHoldEnvelope(hold)
+	paymentStatus, err := h.paymentForHold(r.Context(), holdID, userID)
+	if err != nil {
+		h.internalError(w, r, "get payment", err)
+		return
+	}
+	envelope.Payment = paymentStatus
+	writeJSON(w, http.StatusOK, envelope)
 }
 
 func (h *handlers) releaseHold(w http.ResponseWriter, r *http.Request) {

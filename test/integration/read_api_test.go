@@ -288,19 +288,33 @@ func newPool(t *testing.T) *pgxpool.Pool {
 }
 
 func newServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
+	return newServerWithPaymentDeadline(t, pool, 15*time.Minute)
+}
+
+func newServerWithPaymentDeadline(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	paymentDeadline time.Duration,
+) *httptest.Server {
 	t.Helper()
 
 	store := pgadapter.NewCatalog(pool)
 	holds := pgadapter.NewHoldStore(pool)
+	payments := pgadapter.NewPaymentStore(pool)
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Postgres:     pool,
 		Catalog:      app.NewCatalog(store, store),
 		Reservations: app.NewReservation(holds, newHoldID, 10*time.Minute),
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Payments:     app.NewPayments(payments, newHoldID, paymentDeadline),
+		Logger:       discardLogger(),
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server
+}
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func newReservation(pool *pgxpool.Pool) *app.Reservation {

@@ -26,7 +26,7 @@ func main() {
 	}
 }
 
-func newHoldID() (string, error) {
+func newUUIDv7() (string, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return "", err
@@ -52,7 +52,8 @@ func run(logger *slog.Logger) error {
 	store := postgres.NewCatalog(pool)
 	catalog := app.NewCatalog(store, store)
 	holds := postgres.NewHoldStore(pool)
-	reservations := app.NewReservation(holds, newHoldID, cfg.HoldTTL)
+	reservations := app.NewReservation(holds, newUUIDv7, cfg.HoldTTL)
+	payments := app.NewPayments(postgres.NewPaymentStore(pool), newUUIDv7, cfg.PaymentDeadline)
 
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
@@ -60,6 +61,7 @@ func run(logger *slog.Logger) error {
 			Postgres:     pool,
 			Catalog:      catalog,
 			Reservations: reservations,
+			Payments:     payments,
 			Logger:       logger,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

@@ -119,6 +119,92 @@ What to look at in the JSON: the `hold` object and `payment: null`, the
 `X-Request-Id` response header, and the `seat_unavailable` / `hold_not_active`
 error envelopes.
 
+## Payment lifecycle
+
+Use a fresh seat and user (the hold script left its seat released):
+
+```sh
+BASE=http://localhost:8080
+EVENT_ID=0199a000-0000-7000-8000-000000000001
+SEAT_ID=0199a000-0000-7000-8000-000000000205
+USER_ID=0199a000-0000-7000-8000-000000000921
+
+# 1. Hold the seat.
+HOLD_ID=$(curl -sS -X POST "$BASE/events/$EVENT_ID/holds" \
+  -H "X-User-ID: $USER_ID" -H 'Content-Type: application/json' \
+  -d "{\"seat_id\":\"$SEAT_ID\"}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["hold"]["id"])')
+echo "hold: $HOLD_ID"
+
+# 2. Start payment. Expect 202 with payment.status created.
+curl -sS -i -X POST "$BASE/holds/$HOLD_ID/payment" \
+  -H "X-User-ID: $USER_ID" -H 'Idempotency-Key: demo-key-1'
+
+# 3. Poll until confirmed. The worker settles within about a second.
+for i in $(seq 1 20); do
+  BODY=$(curl -sS -H "X-User-ID: $USER_ID" "$BASE/holds/$HOLD_ID")
+  read -r H P <<< "$(python3 -c '
+import json,sys
+d = json.load(sys.stdin)
+print(d["hold"]["status"], d["payment"]["status"] if d["payment"] else "-")
+' <<< "$BODY")"
+  echo "poll $i: hold=$H payment=$P"
+  [ "$H" = confirmed ] && break
+  sleep 0.5
+done
+
+# 4. The same key returns the same final attempt with 200.
+curl -sS -i -X POST "$BASE/holds/$HOLD_ID/payment" \
+  -H "X-User-ID: $USER_ID" -H 'Idempotency-Key: demo-key-1'
+
+# 5. A different key after the final result returns 409 hold_not_active.
+curl -sS -i -X POST "$BASE/holds/$HOLD_ID/payment" \
+  -H "X-User-ID: $USER_ID" -H 'Idempotency-Key: demo-key-2'
+```
+
+Expected: 202, then `created` followed by `confirmed` / `succeeded`; the same key
+returns 200 with the same attempt id; a different key returns 409
+`hold_not_active`. The seat becomes `sold`, one order exists, and
+`mockpay.charges` has exactly one row for the attempt.
+
+## Try the provider behaviors
+
+Compose forwards `MOCK_BEHAVIOR`, `PAYMENT_DEADLINE`, `PAYMENT_LEASE`,
+`PROVIDER_TIMEOUT` and `SWEEP_INTERVAL`, so these need no file edits. The first
+charge recorded for a key never changes; use a fresh seat or
+`docker compose down -v` between demos.
+
+Decline:
+
+```sh
+MOCK_BEHAVIOR=decline docker compose up -d worker
+# Acquire a fresh seat and start payment.
+# Expected: hold payment_failed, payment failed, seat available, no order.
+MOCK_BEHAVIOR=success docker compose up -d worker
+```
+
+Timeout after charge:
+
+```sh
+MOCK_BEHAVIOR=timeout_after_charge docker compose up -d worker
+# Acquire a fresh seat and start payment.
+# The first settlement records a succeeded charge but returns a timeout.
+# Poll: payment stays pending. After the 2s backoff the worker calls GetCharge,
+# finds the charge, and the payment becomes succeeded. The seat ends sold.
+MOCK_BEHAVIOR=success docker compose up -d worker
+```
+
+Unresolved and overdue:
+
+```sh
+MOCK_BEHAVIOR=unresolved PAYMENT_DEADLINE=5s docker compose up -d api worker
+# Acquire a fresh seat, start payment, wait ~10s.
+docker compose logs worker | grep -i overdue
+# Expected: the attempt stays pending, the seat stays held, and the worker logs
+# `payments overdue` on every settlement tick.
+MOCK_BEHAVIOR=success PAYMENT_DEADLINE=15m docker compose up -d api worker
+```
+
 ## Inspect PostgreSQL
 
 ```sh
@@ -131,6 +217,35 @@ docker compose exec -T postgres psql -U tickets -d tickets -c \
 docker compose exec -T postgres psql -U tickets -d tickets -c \
   "SELECT id, topic, payload, published_at FROM outbox ORDER BY id DESC LIMIT 5;"
 ```
+
+Payment records and the mock provider:
+
+```sh
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT id, hold_id, status, attempts, last_error FROM payment_attempts ORDER BY created_at DESC LIMIT 5;"
+
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT id, amount_cents, currency FROM orders WHERE seat_id = '$SEAT_ID';"
+
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT idempotency_key, status, amount_cents, currency FROM mockpay.charges ORDER BY created_at DESC LIMIT 5;"
+
+# A succeeded attempt must have an order.
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT p.id FROM payment_attempts p
+     LEFT JOIN orders o ON o.payment_attempt_id = p.id
+    WHERE p.status = 'succeeded' AND o.id IS NULL;"
+
+# An order must match its attempt's user, amount and currency.
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT o.id FROM orders o
+     JOIN payment_attempts p ON p.id = o.payment_attempt_id
+    WHERE o.user_id <> p.user_id
+       OR o.amount_cents <> p.amount_cents
+       OR o.currency <> p.currency;"
+```
+
+Both payment invariant queries should return zero rows.
 
 `published_at` is NULL until the Phase 4 outbox relay; that is expected.
 
@@ -229,6 +344,10 @@ go test -race -count=1 -run 'TestInvariant02|TestInvariant03|TestInvariant05' -v
 go test -race -count=1 -run 'TestHoldTransitionAgreement' -v ./test/integration/...
 go test -race -count=1 -run 'TestFault05|TestFault09' -v ./test/integration/...
 go test -race -count=1 -run 'TestExpirySweeper|TestInvariantCheckerDetectsMismatch' -v ./test/integration/...
+go test -race -count=1 -run 'TestPaymentFlowSuccess|TestInvariant04|TestInvariant06|TestInvariant07|TestFault07|TestFault11' -v ./test/integration/...
+go test -race -count=1 -run 'TestFault04|TestFault10' -v ./test/integration/...
+go test -race -count=1 -run 'TestInvariant08|TestFault08' -v ./test/integration/...
+go test -race -count=1 -run 'TestFault01|TestFault03|TestInvariant09|TestC3' -v ./test/integration/...
 ```
 
 What each proves:
@@ -245,6 +364,26 @@ What each proves:
   500, full rollback, and a clean invariant check.
 - `TestInvariantCheckerDetectsMismatch`: intentionally corrupts a seat's expiry
   and proves the checker reports it.
+- `TestInvariant06_OneChargePerHold`: 50 concurrent requests with one
+  idempotency key produce one attempt; a different key gets
+  `payment_in_progress`; one charge and one order.
+- `TestInvariant07_SeatSoldAtMostOnce`: duplicate settlement and worker retries
+  create one order.
+- `TestInvariant08_AmbiguousPaymentNeverReleasesSeat`: `timeout_after_charge`
+  leaves the attempt pending and the seat held; the next check finds the charge
+  and sells the seat.
+- `TestFault01`, `TestFault03`, `TestInvariant09`: worker crash and restart
+  recovery using leases and the provider's stable idempotency key.
+- `TestFault04`, `TestFault10`: a decline releases the seat; a second key after
+  the decline gets `hold_not_active`.
+- `TestFault07`: a payment waiting on the hold row lock past expiry gets 409; a
+  payment whose guard ran before expiry stays valid even with a late commit.
+- `TestFault08`: `unresolved` stays pending and overdue while the seat stays
+  held.
+- `TestFault11`: a dependent update matching zero rows rolls back with an
+  internal error and no partial state.
+- `TestC3_RandomizedMix`: randomized hold/release/pay traffic with the
+  settlement and sweep workers running; the checker ends clean.
 
 Fuzz the transition state machine:
 
@@ -293,6 +432,14 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/readyz)"
 - Backdated holds become `expired`, their seats become `available`, and outbox
   rows appear.
 - Twenty concurrent buyers produce exactly one 201.
+- Starting a payment returns 202, polling reaches `confirmed`/`succeeded`, the
+  same key returns 200 with the same attempt, and a different key after the
+  final result returns 409 `hold_not_active`.
+- A decline ends in `payment_failed` and an available seat; a timeout after
+  charge ends in `succeeded` and a sold seat, never a released seat.
+- An unresolved payment past its deadline logs `payments overdue` and keeps the
+  seat held.
+- There is exactly one `mockpay.charges` row and one order per successful hold.
 - No `invariant violation` logs; the invariant SQL checks return zero rows.
 
 The executable specifications are `test/integration/agreement_test.go`,

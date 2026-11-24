@@ -10,3 +10,9 @@ var ErrSeatUnavailable = errors.New("seat unavailable")
 
 // ErrHoldNotActive reports that the hold is not in a state that allows the change.
 var ErrHoldNotActive = errors.New("hold not active")
+
+// ErrPaymentInProgress reports that the hold already has an open attempt with another key.
+var ErrPaymentInProgress = errors.New("payment in progress")
+
+// ErrIdempotencyKeyReused reports that the key was already used on another hold.
+var ErrIdempotencyKeyReused = errors.New("idempotency key reused")
