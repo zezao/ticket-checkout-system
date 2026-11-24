@@ -16,3 +16,6 @@ var ErrPaymentInProgress = errors.New("payment in progress")
 
 // ErrIdempotencyKeyReused reports that the key was already used on another hold.
 var ErrIdempotencyKeyReused = errors.New("idempotency key reused")
+
+// ErrConsistency reports that a guarded write affected an unexpected number of rows.
+var ErrConsistency = errors.New("consistency error")

@@ -12,6 +12,7 @@ import (
 
 	"github.com/zezao/ticket-checkout-system/internal/app"
 	"github.com/zezao/ticket-checkout-system/internal/domain/payment"
+	"github.com/zezao/ticket-checkout-system/internal/observability"
 )
 
 const attemptColumns = "id::text, hold_id::text, user_id::text, idempotency_key, " +
@@ -330,10 +331,12 @@ func applySucceeded(
 	}
 
 	outbox, err := tx.Exec(ctx, `
-		INSERT INTO outbox (topic, payload) VALUES
-		    ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid)),
-		    ('order.confirmed', jsonb_build_object('order_id', $3::uuid, 'hold_id', $4::uuid, 'seat_id', $2::uuid))`,
-		eventID, seatID, orderID, attempt.HoldID)
+		INSERT INTO outbox (topic, payload, traceparent) VALUES
+		    ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid),
+		     NULLIF($5, '')),
+		    ('order.confirmed', jsonb_build_object('order_id', $3::uuid, 'hold_id', $4::uuid, 'seat_id', $2::uuid),
+		     NULLIF($5, ''))`,
+		eventID, seatID, orderID, attempt.HoldID, observability.Traceparent(ctx))
 	if err != nil {
 		return payment.Attempt{}, fmt.Errorf("insert settlement outbox: %w", err)
 	}
@@ -394,9 +397,10 @@ func applyDeclined(
 	}
 
 	outbox, err := tx.Exec(ctx, `
-		INSERT INTO outbox (topic, payload)
-		VALUES ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid))`,
-		eventID, seatID)
+		INSERT INTO outbox (topic, payload, traceparent)
+		VALUES ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid),
+		        NULLIF($3, ''))`,
+		eventID, seatID, observability.Traceparent(ctx))
 	if err != nil {
 		return payment.Attempt{}, fmt.Errorf("insert decline outbox: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/zezao/ticket-checkout-system/internal/app"
 	"github.com/zezao/ticket-checkout-system/internal/domain/payment"
+	"github.com/zezao/ticket-checkout-system/internal/observability"
 )
 
 const (
@@ -38,11 +39,16 @@ func (h *handlers) startPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	traceparent := observability.Traceparent(r.Context())
+	if traceparent == "" {
+		traceparent = r.Header.Get("traceparent")
+	}
+
 	attempt, err := h.payments.Start(r.Context(), app.StartPaymentRequest{
 		HoldID:         holdID,
 		UserID:         userID,
 		IdempotencyKey: key,
-		Traceparent:    r.Header.Get("traceparent"),
+		Traceparent:    traceparent,
 	})
 	switch {
 	case errors.Is(err, app.ErrNotFound):
@@ -61,6 +67,10 @@ func (h *handlers) startPayment(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		h.internalError(w, r, "start payment", err)
 		return
+	}
+
+	if h.metrics != nil {
+		h.metrics.Payment("started")
 	}
 
 	hold, err := h.reservations.Get(r.Context(), holdID, userID)

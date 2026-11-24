@@ -83,7 +83,7 @@ func TestSettlementCreatedSucceeded(t *testing.T) {
 	}}
 	settlement := newSettlementForTest(store, provider)
 
-	if err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
+	if _, err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 
@@ -110,7 +110,7 @@ func TestSettlementCreatedDeclined(t *testing.T) {
 	}}
 	settlement := newSettlementForTest(store, provider)
 
-	if err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
+	if _, err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	if got := store.params[0].Outcome; got != SettlementDeclined {
@@ -127,7 +127,7 @@ func TestSettlementProviderErrorBecomesPending(t *testing.T) {
 	}}
 	settlement := newSettlementForTest(store, provider)
 
-	if err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
+	if _, err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	params := store.params[0]
@@ -151,7 +151,7 @@ func TestSettlementProcessingBecomesPending(t *testing.T) {
 	}}
 	settlement := newSettlementForTest(store, provider)
 
-	if err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
+	if _, err := settlement.Settle(context.Background(), openAttempt(payment.StatusCreated)); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	if got := store.params[0].Outcome; got != SettlementPending {
@@ -168,7 +168,7 @@ func TestSettlementPendingUsesGetCharge(t *testing.T) {
 	}}
 	settlement := newSettlementForTest(store, provider)
 
-	if err := settlement.Settle(context.Background(), openAttempt(payment.StatusPending)); err != nil {
+	if _, err := settlement.Settle(context.Background(), openAttempt(payment.StatusPending)); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	if len(provider.getSeen) != 1 {
@@ -196,7 +196,7 @@ func TestSettlementPendingReissuesCreateWhenUnknown(t *testing.T) {
 	}
 	settlement := newSettlementForTest(store, provider)
 
-	if err := settlement.Settle(context.Background(), openAttempt(payment.StatusPending)); err != nil {
+	if _, err := settlement.Settle(context.Background(), openAttempt(payment.StatusPending)); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	if len(provider.createSeen) != 1 {
@@ -219,7 +219,7 @@ func TestSettlementAfterDeadlineUsesFixedBackoff(t *testing.T) {
 	attempt := openAttempt(payment.StatusCreated)
 	attempt.DeadlineAt = time.Now().Add(-time.Minute)
 
-	if err := settlement.Settle(context.Background(), attempt); err != nil {
+	if _, err := settlement.Settle(context.Background(), attempt); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	if got := store.params[0].Backoff; got != 10*time.Minute {
@@ -236,7 +236,7 @@ func TestSettlementSkipsFinalAttempt(t *testing.T) {
 
 	for _, status := range []payment.Status{payment.StatusSucceeded, payment.StatusFailed} {
 		attempt := openAttempt(status)
-		if err := settlement.Settle(context.Background(), attempt); err != nil {
+		if _, err := settlement.Settle(context.Background(), attempt); err != nil {
 			t.Fatalf("Settle(%s): %v", status, err)
 		}
 	}

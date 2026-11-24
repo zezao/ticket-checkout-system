@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -10,16 +11,27 @@ import (
 
 const sweepBatchSize = 100
 
+// SweepMetrics records sweeper observations.
+type SweepMetrics interface {
+	ConsistencyError()
+}
+
 // Sweeper periodically retires expired active holds.
 type Sweeper struct {
 	store    app.ExpiryStore
 	logger   *slog.Logger
 	interval time.Duration
+	metrics  SweepMetrics
 }
 
 // NewSweeper builds an expiry sweeper.
-func NewSweeper(store app.ExpiryStore, logger *slog.Logger, interval time.Duration) *Sweeper {
-	return &Sweeper{store: store, logger: logger, interval: interval}
+func NewSweeper(
+	store app.ExpiryStore,
+	logger *slog.Logger,
+	interval time.Duration,
+	metrics SweepMetrics,
+) *Sweeper {
+	return &Sweeper{store: store, logger: logger, interval: interval, metrics: metrics}
 }
 
 // Run sweeps until ctx is cancelled.
@@ -44,6 +56,9 @@ func (s *Sweeper) sweep(ctx context.Context) {
 	if err != nil {
 		if ctx.Err() != nil {
 			return
+		}
+		if s.metrics != nil && errors.Is(err, app.ErrConsistency) {
+			s.metrics.ConsistencyError()
 		}
 		s.logger.ErrorContext(ctx, "expiry sweep failed", "error", err)
 		return

@@ -52,6 +52,20 @@ func (h *handlers) createHold(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
+	if h.rateLimiter != nil {
+		allowed, err := h.rateLimiter.Allow(r.Context(), userID)
+		if err != nil {
+			h.logger.WarnContext(r.Context(), "rate limiter unavailable; failing open",
+				"error", err,
+				"request_id", RequestID(r.Context()),
+			)
+		} else if !allowed {
+			writeError(w, http.StatusTooManyRequests, "rate_limited", "too many hold requests")
+			return
+		}
+	}
+
 	eventID, ok := eventIDFromPath(w, r)
 	if !ok {
 		return
@@ -73,6 +87,7 @@ func (h *handlers) createHold(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	acquireStart := time.Now()
 	result, err := h.reservations.Acquire(r.Context(), app.AcquireRequest{
 		EventID: eventID,
 		SeatID:  seatID.String(),
@@ -80,15 +95,19 @@ func (h *handlers) createHold(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, app.ErrNotFound):
+		h.observeHold("error", acquireStart)
 		writeError(w, http.StatusNotFound, "not_found", "seat not found")
 		return
 	case errors.Is(err, app.ErrSeatUnavailable):
+		h.observeHold("conflict", acquireStart)
 		writeError(w, http.StatusConflict, "seat_unavailable", "seat is not available")
 		return
 	case err != nil:
+		h.observeHold("error", acquireStart)
 		h.internalError(w, r, "acquire hold", err)
 		return
 	}
+	h.observeHold("acquired", acquireStart)
 
 	status := http.StatusCreated
 	if !result.Created {
@@ -204,5 +223,11 @@ func newHoldEnvelope(hold reservation.Hold) holdEnvelope {
 			SeatID:    hold.SeatID,
 			ExpiresAt: hold.ExpiresAt.UTC(),
 		},
+	}
+}
+
+func (h *handlers) observeHold(result string, start time.Time) {
+	if h.metrics != nil {
+		h.metrics.HoldAttempt(result, time.Since(start))
 	}
 }

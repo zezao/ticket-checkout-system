@@ -28,6 +28,13 @@ type SeatStore interface {
 	ListByEvent(ctx context.Context, eventID string) ([]reservation.Seat, error)
 }
 
+// SeatMapCache caches the seats of one event. Cache errors are never fatal.
+type SeatMapCache interface {
+	Get(ctx context.Context, eventID string) ([]reservation.Seat, bool, error)
+	Set(ctx context.Context, eventID string, seats []reservation.Seat) error
+	Delete(ctx context.Context, eventID string) error
+}
+
 // AcquireRequest is the input to the acquire use case.
 type AcquireRequest struct {
 	EventID string
@@ -153,4 +160,19 @@ type InvariantViolation struct {
 // InvariantChecker reports data-level invariant violations without repairing them.
 type InvariantChecker interface {
 	Check(ctx context.Context) ([]InvariantViolation, error)
+}
+
+// OutboxMessage is one unpublished event claimed by the relay.
+type OutboxMessage struct {
+	ID          int64
+	Topic       string
+	Payload     []byte
+	Traceparent string
+}
+
+// OutboxStore claims and acknowledges outbox rows.
+type OutboxStore interface {
+	ClaimOutbox(ctx context.Context, lease time.Duration, limit int) ([]OutboxMessage, error)
+	MarkPublished(ctx context.Context, ids []int64) error
+	OutboxLag(ctx context.Context) (time.Duration, error)
 }

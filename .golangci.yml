@@ -33,6 +33,10 @@ linters:
             - github.com/zezao/ticket-checkout-system/internal/app
             - github.com/jackc/pgx
             - github.com/google/uuid
+            - github.com/redis/go-redis
+            - github.com/exaring/otelpgx
+            - golang.org/x/sync
+            - github.com/zezao/ticket-checkout-system/internal/observability
         worker:
           files:
             - "**/internal/worker/**"
@@ -43,6 +47,7 @@ linters:
             - github.com/zezao/ticket-checkout-system/internal/domain/payment
             - github.com/zezao/ticket-checkout-system/internal/domain/order
             - github.com/zezao/ticket-checkout-system/internal/app
+            - github.com/zezao/ticket-checkout-system/internal/observability
         cmd:
           files:
             - "**/cmd/**"

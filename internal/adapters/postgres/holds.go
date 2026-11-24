@@ -11,12 +11,13 @@ import (
 
 	"github.com/zezao/ticket-checkout-system/internal/app"
 	"github.com/zezao/ticket-checkout-system/internal/domain/reservation"
+	"github.com/zezao/ticket-checkout-system/internal/observability"
 )
 
 const holdColumns = "id::text, seat_id::text, user_id::text, status::text, " +
 	"expires_at, amount_cents, currency, created_at, updated_at"
 
-var errConsistency = errors.New("consistency error")
+var errConsistency = app.ErrConsistency
 
 // HoldStore implements the hold lifecycle with PostgreSQL as the arbiter.
 type HoldStore struct {
@@ -95,9 +96,10 @@ func (s *HoldStore) Acquire(ctx context.Context, params app.AcquireParams) (app.
 	}
 
 	evented, err := tx.Exec(ctx, `
-		INSERT INTO outbox (topic, payload)
-		VALUES ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid))`,
-		eventID, seatID)
+		INSERT INTO outbox (topic, payload, traceparent)
+		VALUES ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid),
+		        NULLIF($3, ''))`,
+		eventID, seatID, observability.Traceparent(ctx))
 	if err != nil {
 		return app.AcquireResult{}, fmt.Errorf("insert seat.changed outbox: %w", err)
 	}
@@ -163,9 +165,10 @@ func (s *HoldStore) Release(ctx context.Context, holdID, userID string) error {
 	}
 
 	evented, err := tx.Exec(ctx, `
-		INSERT INTO outbox (topic, payload)
-		VALUES ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid))`,
-		eventID, seatID)
+		INSERT INTO outbox (topic, payload, traceparent)
+		VALUES ('seat.changed', jsonb_build_object('event_id', $1::uuid, 'seat_id', $2::uuid),
+		        NULLIF($3, ''))`,
+		eventID, seatID, observability.Traceparent(ctx))
 	if err != nil {
 		return fmt.Errorf("insert seat.changed outbox: %w", err)
 	}
@@ -227,14 +230,15 @@ func (s *HoldStore) ExpireBatch(ctx context.Context, limit int) (int, error) {
 		       AND s.status = 'held'
 		    RETURNING s.id, s.event_id
 		), written AS (
-		    INSERT INTO outbox (topic, payload)
-		    SELECT 'seat.changed', jsonb_build_object('event_id', us.event_id, 'seat_id', us.id)
+		    INSERT INTO outbox (topic, payload, traceparent)
+		    SELECT 'seat.changed', jsonb_build_object('event_id', us.event_id, 'seat_id', us.id),
+		           NULLIF($2, '')
 		      FROM updated_seats us
 		    RETURNING 1
 		)
 		SELECT (SELECT count(*) FROM updated_holds),
 		       (SELECT count(*) FROM updated_seats),
-		       (SELECT count(*) FROM written)`, limit,
+		       (SELECT count(*) FROM written)`, limit, observability.Traceparent(ctx),
 	).Scan(&updatedHolds, &updatedSeats, &written)
 	if err != nil {
 		return 0, fmt.Errorf("expire holds: %w", err)

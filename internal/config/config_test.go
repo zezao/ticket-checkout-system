@@ -30,6 +30,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.HTTPAddr != ":8080" {
 		t.Errorf("HTTPAddr = %q, want %q", cfg.HTTPAddr, ":8080")
 	}
+	if cfg.MetricsAddr != ":9090" {
+		t.Errorf("MetricsAddr = %q, want %q", cfg.MetricsAddr, ":9090")
+	}
+	if cfg.HoldRateLimit != 60 {
+		t.Errorf("HoldRateLimit = %d, want %d", cfg.HoldRateLimit, 60)
+	}
 	if cfg.HoldTTL != 10*time.Minute {
 		t.Errorf("HoldTTL = %v, want %v", cfg.HoldTTL, 10*time.Minute)
 	}
@@ -68,6 +74,8 @@ func TestLoadOverrides(t *testing.T) {
 		"DATABASE_URL":     "postgres://db/tickets",
 		"REDIS_URL":        "redis://redis:6379",
 		"HTTP_ADDR":        ":9090",
+		"METRICS_ADDR":     ":19090",
+		"HOLD_RATE_LIMIT":  "10",
 		"HOLD_TTL":         "90s",
 		"PAYMENT_DEADLINE": "20m",
 		"PAYMENT_LEASE":    "45s",
@@ -88,6 +96,12 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.HTTPAddr != ":9090" {
 		t.Errorf("HTTPAddr = %q", cfg.HTTPAddr)
+	}
+	if cfg.MetricsAddr != ":19090" {
+		t.Errorf("MetricsAddr = %q", cfg.MetricsAddr)
+	}
+	if cfg.HoldRateLimit != 10 {
+		t.Errorf("HoldRateLimit = %d", cfg.HoldRateLimit)
 	}
 	if cfg.HoldTTL != 90*time.Second {
 		t.Errorf("HoldTTL = %v", cfg.HoldTTL)
@@ -126,6 +140,9 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		{name: "payment lease zero", vars: map[string]string{"PAYMENT_LEASE": "0s"}},
 		{name: "provider timeout invalid", vars: map[string]string{"PROVIDER_TIMEOUT": "10"}},
 		{name: "sweep interval negative", vars: map[string]string{"SWEEP_INTERVAL": "-5s"}},
+		{name: "hold rate limit not a number", vars: map[string]string{"HOLD_RATE_LIMIT": "many"}},
+		{name: "hold rate limit zero", vars: map[string]string{"HOLD_RATE_LIMIT": "0"}},
+		{name: "hold rate limit negative", vars: map[string]string{"HOLD_RATE_LIMIT": "-1"}},
 		{name: "pg max conns not a number", vars: map[string]string{"PG_MAX_CONNS": "many"}},
 		{name: "pg max conns zero", vars: map[string]string{"PG_MAX_CONNS": "0"}},
 		{name: "pg max conns negative", vars: map[string]string{"PG_MAX_CONNS": "-1"}},

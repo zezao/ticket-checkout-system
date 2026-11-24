@@ -13,8 +13,8 @@ make lint        # golangci-lint + depguard layer rules
 
 | Command | What it covers |
 | --- | --- |
-| `make test-unit` | Config, handlers, use cases, domain transitions, sweeper/checker loops. No Docker needed. |
-| `make test` | Everything above plus real HTTP + real PostgreSQL: hold lifecycle, ownership, expiry, all 36 transition pairs, C1/C2, fault 5 and 9. |
+| `make test-unit` | Config, handlers, use cases, domain transitions, sweeper/checker/relay loops. No Docker needed. |
+| `make test` | Everything above plus real HTTP + PostgreSQL + Redis: holds, payments, all 36 transition pairs, C1/C2/C3, faults 1-5 and 7-11, cache/rate-limit tests, invariant 10. |
 | `make lint` | `depguard` proves `domain` imports only stdlib and adapters do not reach into `cmd`. |
 
 Expected: every package `ok`, no race reports, and `0 issues` from lint. The full
@@ -247,7 +247,8 @@ docker compose exec -T postgres psql -U tickets -d tickets -c \
 
 Both payment invariant queries should return zero rows.
 
-`published_at` is NULL until the Phase 4 outbox relay; that is expected.
+The worker relay publishes outbox rows within about a second; `published_at` is
+NULL only while a row is waiting for (or retrying) its handler.
 
 The two data-level checks behind the invariants should return **zero rows**:
 
@@ -336,6 +337,90 @@ docker compose exec -T postgres psql -U tickets -d tickets -c \
 
 Expected: `1`.
 
+## Redis cache, rate limiting and invalidation
+
+If you are in a new shell, redefine the variables from the hold script
+(`BASE`, `EVENT_ID`, `SEAT_ID`, `USER_ID`).
+
+Populate and inspect the seat-map cache:
+
+```sh
+curl -sS "$BASE/events/$EVENT_ID/seats" > /dev/null
+docker compose exec -T redis redis-cli --scan --pattern 'seatmap:*'
+```
+
+You should see `seatmap:{event-id}`. The key has a 5-second TTL. A miss populates
+it from PostgreSQL, and `singleflight` collapses concurrent misses.
+
+Take a hold and watch the relay invalidate it:
+
+```sh
+HOLD_ID=$(curl -sS -X POST "$BASE/events/$EVENT_ID/holds" \
+  -H "X-User-ID: $USER_ID" -H 'Content-Type: application/json' \
+  -d "{\"seat_id\":\"$SEAT_ID\"}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["hold"]["id"])')
+
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT id, published_at FROM outbox
+    WHERE payload->>'seat_id' = '$SEAT_ID'
+    ORDER BY id DESC LIMIT 1;"
+docker compose exec -T redis redis-cli --scan --pattern "seatmap:$EVENT_ID"
+```
+
+The worker relay runs every second: it deletes the key and marks the outbox row
+published.
+
+Rate limiting:
+
+```sh
+HOLD_RATE_LIMIT=2 docker compose up -d api
+# Same user, three different available seats: 201, 201, 429 rate_limited.
+# A different user is still allowed.
+HOLD_RATE_LIMIT=60 docker compose up -d api
+```
+
+Redis stopped (invariant 10):
+
+```sh
+docker compose stop redis
+curl -sS -i "$BASE/readyz"     # 200, "redis":"unavailable"
+# Take a hold and start a payment; both still work.
+docker compose start redis
+```
+
+## Metrics and tracing
+
+```sh
+curl -s http://localhost:8080/metrics | grep -E \
+  'hold_attempts_total|payments_total|seatmap_cache_total|redis_errors_total'
+curl -s http://localhost:9090/metrics | grep -E \
+  'payments_overdue|outbox_lag_seconds|invariant_violations_total|pgxpool_acquired_conns'
+```
+
+- Take a hold and make a conflicting hold: `hold_attempts_total{result="acquired"}`
+  and `{result="conflict"}` increment.
+- Start a payment: `payments_total{result="started"}` increments; after the
+  worker settles, the worker registry shows `payments_total{result="succeeded"}`.
+- Read the seat map twice: `seatmap_cache_total{result="miss"}` then `hit`.
+- Stop Redis and make a request: `redis_errors_total` increments; readiness stays
+  200 with Redis unavailable.
+
+Tracing:
+
+```sh
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT id, traceparent FROM payment_attempts ORDER BY created_at DESC LIMIT 3;"
+docker compose exec -T postgres psql -U tickets -d tickets -c \
+  "SELECT id, topic, traceparent FROM outbox ORDER BY id DESC LIMIT 5;"
+```
+
+HTTP requests, pgx queries and provider calls emit spans. Payment attempts and
+outbox rows store the `traceparent`, and the worker resumes it during settlement
+and outbox handling. With no collector configured, trace ids are still generated
+and propagated. To export, run an OTLP HTTP collector and set
+`OTEL_EXPORTER_OTLP_ENDPOINT` for both the API and worker; no collector is
+bundled in Compose.
+
 ## Run the hard tests individually
 
 ```sh
@@ -348,6 +433,7 @@ go test -race -count=1 -run 'TestPaymentFlowSuccess|TestInvariant04|TestInvarian
 go test -race -count=1 -run 'TestFault04|TestFault10' -v ./test/integration/...
 go test -race -count=1 -run 'TestInvariant08|TestFault08' -v ./test/integration/...
 go test -race -count=1 -run 'TestFault01|TestFault03|TestInvariant09|TestC3' -v ./test/integration/...
+go test -race -count=1 -run 'TestSeatMap|TestRateLimit|TestInvariant10|TestMetricsEndpoint' -v ./test/integration/...
 ```
 
 What each proves:
@@ -384,6 +470,15 @@ What each proves:
   internal error and no partial state.
 - `TestC3_RandomizedMix`: randomized hold/release/pay traffic with the
   settlement and sweep workers running; the checker ends clean.
+- `TestSeatMapCacheHitAndRelayInvalidation`: populates Redis, then proves the
+  outbox relay deletes the key and marks the row published.
+- `TestSeatMapServedFromCacheUnderLoad`: 50 concurrent readers see the cached
+  price after PostgreSQL changes, proving the cache is serving them.
+- `TestRateLimitHoldRequests`: the per-user limit returns 429 while another user
+  proceeds.
+- `TestInvariant10_RedisStoppedFailsOpen`: with Redis stopped, the seat map falls
+  back to PostgreSQL and holds/payments still work.
+- `TestMetricsEndpoint`: scrapes `/metrics` and checks hold/payment series.
 
 Fuzz the transition state machine:
 
@@ -440,6 +535,14 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/readyz)"
 - An unresolved payment past its deadline logs `payments overdue` and keeps the
   seat held.
 - There is exactly one `mockpay.charges` row and one order per successful hold.
+- The seat-map cache key appears after a read and disappears after a
+  `seat.changed` outbox row is relayed; outbox rows end with `published_at` set.
+- A third hold from a user with `HOLD_RATE_LIMIT=2` returns 429 `rate_limited`.
+- With Redis stopped, `/readyz` stays 200 with `"redis":"unavailable"`, and holds
+  and payments still work.
+- The API and worker `/metrics` endpoints expose the documented series; the
+  worker shows `pgxpool_acquired_conns` and `payments_overdue`.
+- Payment attempts and outbox rows have non-null `traceparent` values.
 - No `invariant violation` logs; the invariant SQL checks return zero rows.
 
 The executable specifications are `test/integration/agreement_test.go`,

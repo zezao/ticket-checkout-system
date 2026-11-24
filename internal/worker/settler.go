@@ -2,18 +2,27 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/zezao/ticket-checkout-system/internal/app"
 	"github.com/zezao/ticket-checkout-system/internal/domain/payment"
+	"github.com/zezao/ticket-checkout-system/internal/observability"
 )
 
 const settlementBatchSize = 100
 
 // Settlement applies one provider result to one claimed attempt.
 type Settlement interface {
-	Settle(ctx context.Context, attempt payment.Attempt) error
+	Settle(ctx context.Context, attempt payment.Attempt) (app.SettlementOutcome, error)
+}
+
+// SettlementMetrics records payment settlement observations.
+type SettlementMetrics interface {
+	Payment(result string)
+	Overdue(count int)
+	ConsistencyError()
 }
 
 // Settler claims due attempts and runs settlement against the provider.
@@ -23,6 +32,7 @@ type Settler struct {
 	logger     *slog.Logger
 	lease      time.Duration
 	interval   time.Duration
+	metrics    SettlementMetrics
 }
 
 // NewSettler builds the payment settlement loop.
@@ -31,6 +41,7 @@ func NewSettler(
 	settlement Settlement,
 	logger *slog.Logger,
 	lease, interval time.Duration,
+	metrics SettlementMetrics,
 ) *Settler {
 	return &Settler{
 		store:      store,
@@ -38,6 +49,7 @@ func NewSettler(
 		logger:     logger,
 		lease:      lease,
 		interval:   interval,
+		metrics:    metrics,
 	}
 }
 
@@ -71,12 +83,26 @@ func (s *Settler) tick(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := s.settlement.Settle(ctx, attempt); err != nil {
+
+		settleCtx, span := observability.ContinueTrace(ctx, attempt.Traceparent, "settle_payment")
+		outcome, err := s.settlement.Settle(settleCtx, attempt)
+		span.End()
+		if err != nil {
+			if s.metrics != nil {
+				s.metrics.Payment("error")
+				if errors.Is(err, app.ErrConsistency) {
+					s.metrics.ConsistencyError()
+				}
+			}
 			s.logger.ErrorContext(ctx, "settle payment failed",
 				"attempt_id", attempt.ID,
 				"hold_id", attempt.HoldID,
 				"error", err,
 			)
+			continue
+		}
+		if outcome != "" && s.metrics != nil {
+			s.metrics.Payment(string(outcome))
 		}
 	}
 
@@ -86,6 +112,9 @@ func (s *Settler) tick(ctx context.Context) {
 			s.logger.ErrorContext(ctx, "count overdue payments failed", "error", err)
 		}
 		return
+	}
+	if s.metrics != nil {
+		s.metrics.Overdue(overdue)
 	}
 	if overdue > 0 {
 		s.logger.WarnContext(ctx, "payments overdue", "count", overdue)

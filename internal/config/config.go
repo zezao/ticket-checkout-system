@@ -16,7 +16,9 @@ const (
 	defaultSweepInterval   = 5 * time.Second
 	defaultPGMaxConns      = 25
 	defaultHTTPAddr        = ":8080"
+	defaultMetricsAddr     = ":9090"
 	defaultMockBehavior    = "success"
+	defaultHoldRateLimit   = 60
 )
 
 var mockBehaviors = map[string]struct{}{
@@ -31,7 +33,9 @@ type Config struct {
 	DatabaseURL     string
 	RedisURL        string
 	HTTPAddr        string
+	MetricsAddr     string
 	HoldTTL         time.Duration
+	HoldRateLimit   int
 	PaymentDeadline time.Duration
 	PaymentLease    time.Duration
 	ProviderTimeout time.Duration
@@ -50,6 +54,7 @@ func load(lookup func(string) string) (Config, error) {
 		DatabaseURL:  lookup("DATABASE_URL"),
 		RedisURL:     lookup("REDIS_URL"),
 		HTTPAddr:     stringOr(lookup, "HTTP_ADDR", defaultHTTPAddr),
+		MetricsAddr:  stringOr(lookup, "METRICS_ADDR", defaultMetricsAddr),
 		MockBehavior: stringOr(lookup, "MOCK_BEHAVIOR", defaultMockBehavior),
 	}
 	if cfg.DatabaseURL == "" {
@@ -73,6 +78,9 @@ func load(lookup func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if cfg.SweepInterval, err = duration(lookup, "SWEEP_INTERVAL", defaultSweepInterval); err != nil {
+		return Config{}, err
+	}
+	if cfg.HoldRateLimit, err = intValue(lookup, "HOLD_RATE_LIMIT", defaultHoldRateLimit); err != nil {
 		return Config{}, err
 	}
 	if cfg.PGMaxConns, err = int32Value(lookup, "PG_MAX_CONNS", defaultPGMaxConns); err != nil {
@@ -119,4 +127,20 @@ func int32Value(lookup func(string) string, key string, fallback int) (int32, er
 		return 0, fmt.Errorf("%s: must be positive", key)
 	}
 	return int32(value), nil
+}
+
+func intValue(lookup func(string) string, key string, fallback int) (int, error) {
+	raw := lookup(key)
+	if raw == "" {
+		return fallback, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if value <= 0 {
+		return 0, fmt.Errorf("%s: must be positive", key)
+	}
+	return value, nil
 }

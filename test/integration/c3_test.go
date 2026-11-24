@@ -56,11 +56,11 @@ func TestC3_RandomizedMix(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		worker.NewSettler(paymentStore, settlement, discardLogger(),
-			300*time.Millisecond, 100*time.Millisecond).Run(runCtx)
+			300*time.Millisecond, 100*time.Millisecond, nil).Run(runCtx)
 	}()
 	go func() {
 		defer wg.Done()
-		worker.NewSweeper(holdStore, discardLogger(), 100*time.Millisecond).Run(runCtx)
+		worker.NewSweeper(holdStore, discardLogger(), 100*time.Millisecond, nil).Run(runCtx)
 	}()
 
 	type trackedHold struct {

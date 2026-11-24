@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 
 	"github.com/zezao/ticket-checkout-system/internal/adapters/httpapi"
 	pgadapter "github.com/zezao/ticket-checkout-system/internal/adapters/postgres"
@@ -30,9 +31,11 @@ import (
 )
 
 var (
-	databaseURL  string
-	testStartsAt = time.Date(2027, 6, 12, 19, 30, 0, 0, time.UTC)
-	httpClient   = &http.Client{Timeout: 10 * time.Second}
+	databaseURL    string
+	redisURL       string
+	redisContainer *tcredis.RedisContainer
+	testStartsAt   = time.Date(2027, 6, 12, 19, 30, 0, 0, time.UTC)
+	httpClient     = &http.Client{Timeout: 10 * time.Second}
 )
 
 func TestMain(m *testing.M) {
@@ -69,6 +72,24 @@ func TestMain(m *testing.M) {
 			log.Printf("apply migrations: %v", err)
 			return 1
 		}
+
+		redisContainer, err = tcredis.Run(ctx, "redis:7-alpine")
+		if err != nil {
+			log.Printf("start redis container: %v", err)
+			return 1
+		}
+		defer func() {
+			if err := testcontainers.TerminateContainer(redisContainer); err != nil {
+				log.Printf("terminate redis container: %v", err)
+			}
+		}()
+
+		redisURL, err = redisContainer.ConnectionString(ctx)
+		if err != nil {
+			log.Printf("read redis connection string: %v", err)
+			return 1
+		}
+
 		return m.Run()
 	}()
 

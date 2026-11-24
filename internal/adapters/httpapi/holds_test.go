@@ -60,12 +60,22 @@ func serveHold(
 	method, path, body string,
 	headers map[string]string,
 ) *httptest.ResponseRecorder {
-	return serveHoldWithPayments(reservations, &fakePayments{}, method, path, body, headers)
+	return serveHoldFull(reservations, &fakePayments{}, nil, method, path, body, headers)
 }
 
 func serveHoldWithPayments(
 	reservations Reservations,
 	payments Payments,
+	method, path, body string,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
+	return serveHoldFull(reservations, payments, nil, method, path, body, headers)
+}
+
+func serveHoldFull(
+	reservations Reservations,
+	payments Payments,
+	rateLimiter RateLimiter,
 	method, path, body string,
 	headers map[string]string,
 ) *httptest.ResponseRecorder {
@@ -84,6 +94,7 @@ func serveHoldWithPayments(
 		Postgres:     stubPinger{},
 		Reservations: reservations,
 		Payments:     payments,
+		RateLimiter:  rateLimiter,
 		Logger:       testLogger(),
 	}).ServeHTTP(rec, req)
 
@@ -368,4 +379,69 @@ func TestReleaseHoldRequiresUserID(t *testing.T) {
 	rec := serveHold(&fakeReservations{}, http.MethodDelete, "/holds/"+testHoldID, "", nil)
 
 	assertError(t, rec, http.StatusUnauthorized, "user_id_required")
+}
+
+type fakeRateLimiter struct {
+	allowed bool
+	err     error
+	calls   int
+	userID  string
+}
+
+func (f *fakeRateLimiter) Allow(_ context.Context, userID string) (bool, error) {
+	f.calls++
+	f.userID = userID
+	return f.allowed, f.err
+}
+
+func TestCreateHoldRateLimited(t *testing.T) {
+	t.Parallel()
+
+	limiter := &fakeRateLimiter{allowed: false}
+	reservations := &fakeReservations{}
+
+	rec := serveHoldFull(reservations, &fakePayments{}, limiter, http.MethodPost,
+		"/events/"+testEventID+"/holds",
+		`{"seat_id":"`+testSeatID+`"}`,
+		map[string]string{userIDHeader: testUserID},
+	)
+
+	assertError(t, rec, http.StatusTooManyRequests, "rate_limited")
+	if limiter.calls != 1 {
+		t.Errorf("limiter calls = %d, want 1", limiter.calls)
+	}
+	if limiter.userID != testUserID {
+		t.Errorf("limiter user = %q, want %q", limiter.userID, testUserID)
+	}
+	if reservations.acquireCalls != 0 {
+		t.Errorf("acquire calls = %d, want 0", reservations.acquireCalls)
+	}
+}
+
+func TestCreateHoldRateLimiterFailsOpen(t *testing.T) {
+	t.Parallel()
+
+	limiter := &fakeRateLimiter{allowed: false, err: errors.New("redis down")}
+	reservations := &fakeReservations{acquireResult: app.AcquireResult{
+		Hold: reservation.Hold{
+			ID:        testHoldID,
+			SeatID:    testSeatID,
+			Status:    reservation.HoldActive,
+			ExpiresAt: time.Date(2027, 6, 12, 19, 40, 0, 0, time.UTC),
+		},
+		Created: true,
+	}}
+
+	rec := serveHoldFull(reservations, &fakePayments{}, limiter, http.MethodPost,
+		"/events/"+testEventID+"/holds",
+		`{"seat_id":"`+testSeatID+`"}`,
+		map[string]string{userIDHeader: testUserID},
+	)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusCreated, rec.Body)
+	}
+	if reservations.acquireCalls != 1 {
+		t.Errorf("acquire calls = %d, want 1", reservations.acquireCalls)
+	}
 }

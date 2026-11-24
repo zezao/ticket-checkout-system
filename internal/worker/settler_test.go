@@ -37,13 +37,17 @@ func (s *stubSettlerStore) CountOverdue(context.Context) (int, error) {
 }
 
 type stubSettlement struct {
-	seen []payment.Attempt
-	err  error
+	seen    []payment.Attempt
+	outcome app.SettlementOutcome
+	err     error
 }
 
-func (s *stubSettlement) Settle(_ context.Context, attempt payment.Attempt) error {
+func (s *stubSettlement) Settle(
+	_ context.Context,
+	attempt payment.Attempt,
+) (app.SettlementOutcome, error) {
 	s.seen = append(s.seen, attempt)
-	return s.err
+	return s.outcome, s.err
 }
 
 func TestSettlerTick(t *testing.T) {
@@ -56,7 +60,7 @@ func TestSettlerTick(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	settler := NewSettler(store, settlement, logger, time.Second, time.Minute)
+	settler := NewSettler(store, settlement, logger, time.Second, time.Minute, nil)
 	settler.tick(context.Background())
 
 	if store.claimCalls != 1 {
@@ -79,7 +83,7 @@ func TestSettlerContinuesAfterSettlementError(t *testing.T) {
 	store := &stubSettlerStore{attempts: []payment.Attempt{{ID: "attempt-1"}, {ID: "attempt-2"}}}
 	settlement := &stubSettlement{err: errors.New("database unavailable")}
 
-	settler := NewSettler(store, settlement, workerTestLogger(), time.Second, time.Minute)
+	settler := NewSettler(store, settlement, workerTestLogger(), time.Second, time.Minute, nil)
 	settler.tick(context.Background())
 
 	if len(settlement.seen) != 2 {
@@ -93,7 +97,7 @@ func TestSettlerClaimErrorStopsTick(t *testing.T) {
 	store := &stubSettlerStore{claimErr: errors.New("database unavailable")}
 	settlement := &stubSettlement{}
 
-	settler := NewSettler(store, settlement, workerTestLogger(), time.Second, time.Minute)
+	settler := NewSettler(store, settlement, workerTestLogger(), time.Second, time.Minute, nil)
 	settler.tick(context.Background())
 
 	if len(settlement.seen) != 0 {
@@ -101,5 +105,69 @@ func TestSettlerClaimErrorStopsTick(t *testing.T) {
 	}
 	if store.overdueCalls != 0 {
 		t.Errorf("overdue calls = %d, want 0", store.overdueCalls)
+	}
+}
+
+type stubSettlementMetrics struct {
+	payments    map[string]int
+	overdue     int
+	overdueSet  bool
+	consistency int
+}
+
+func (m *stubSettlementMetrics) Payment(result string) {
+	if m.payments == nil {
+		m.payments = make(map[string]int)
+	}
+	m.payments[result]++
+}
+
+func (m *stubSettlementMetrics) Overdue(count int) {
+	m.overdue = count
+	m.overdueSet = true
+}
+
+func (m *stubSettlementMetrics) ConsistencyError() {
+	m.consistency++
+}
+
+func TestSettlerRecordsOutcomeAndOverdueMetrics(t *testing.T) {
+	t.Parallel()
+
+	store := &stubSettlerStore{
+		attempts: []payment.Attempt{{ID: "attempt-1"}},
+		overdue:  2,
+	}
+	settlement := &stubSettlement{outcome: app.SettlementSucceeded}
+	metrics := &stubSettlementMetrics{}
+
+	settler := NewSettler(store, settlement, workerTestLogger(),
+		time.Second, time.Minute, metrics)
+	settler.tick(context.Background())
+
+	if got := metrics.payments["succeeded"]; got != 1 {
+		t.Errorf("succeeded payments = %d, want 1", got)
+	}
+	if !metrics.overdueSet || metrics.overdue != 2 {
+		t.Errorf("overdue = %d (set=%t), want 2", metrics.overdue, metrics.overdueSet)
+	}
+}
+
+func TestSettlerRecordsConsistencyErrors(t *testing.T) {
+	t.Parallel()
+
+	store := &stubSettlerStore{attempts: []payment.Attempt{{ID: "attempt-1"}}}
+	settlement := &stubSettlement{err: app.ErrConsistency}
+	metrics := &stubSettlementMetrics{}
+
+	settler := NewSettler(store, settlement, workerTestLogger(),
+		time.Second, time.Minute, metrics)
+	settler.tick(context.Background())
+
+	if got := metrics.payments["error"]; got != 1 {
+		t.Errorf("error payments = %d, want 1", got)
+	}
+	if metrics.consistency != 1 {
+		t.Errorf("consistency errors = %d, want 1", metrics.consistency)
 	}
 }

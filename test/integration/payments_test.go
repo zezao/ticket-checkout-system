@@ -572,7 +572,7 @@ func TestFault11_SettlementDependentUpdateZeroRows(t *testing.T) {
 	if len(attempts) != 1 {
 		t.Fatalf("claimed %d attempts, want 1", len(attempts))
 	}
-	if err := settlement.Settle(ctx, attempts[0]); err == nil {
+	if _, err := settlement.Settle(ctx, attempts[0]); err == nil {
 		t.Fatal("expected a consistency error")
 	}
 
@@ -686,7 +686,7 @@ func settleOnce(
 		t.Fatalf("claim due: %v", err)
 	}
 	for _, attempt := range attempts {
-		if err := settlement.Settle(ctx, attempt); err != nil {
+		if _, err := settlement.Settle(ctx, attempt); err != nil {
 			t.Fatalf("settle attempt %s: %v", attempt.ID, err)
 		}
 	}

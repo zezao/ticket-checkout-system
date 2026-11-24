@@ -68,7 +68,7 @@ func TestFault01_LeaseRecoveryAfterWorkerCrash(t *testing.T) {
 	if recovered == nil {
 		t.Fatal("attempt was not claimable after its lease expired")
 	}
-	if err := settlement.Settle(ctx, *recovered); err != nil {
+	if _, err := settlement.Settle(ctx, *recovered); err != nil {
 		t.Fatalf("settle recovered attempt: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestInvariant09_PaymentStateSurvivesWorkerRestart(t *testing.T) {
 	if recovered == nil {
 		t.Fatal("worker B did not recover the attempt")
 	}
-	if err := workerBSettlement.Settle(ctx, *recovered); err != nil {
+	if _, err := workerBSettlement.Settle(ctx, *recovered); err != nil {
 		t.Fatalf("worker B settle: %v", err)
 	}
 

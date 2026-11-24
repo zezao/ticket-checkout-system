@@ -35,9 +35,12 @@ func NewSettlement(store SettlementStore, provider Provider, providerTimeout tim
 }
 
 // Settle calls the provider outside any transaction, then applies the result.
-func (s *Settlement) Settle(ctx context.Context, attempt payment.Attempt) error {
+func (s *Settlement) Settle(
+	ctx context.Context,
+	attempt payment.Attempt,
+) (SettlementOutcome, error) {
 	if !attempt.Open() {
-		return nil
+		return "", nil
 	}
 
 	outcome, lastError := s.callProvider(ctx, attempt)
@@ -56,7 +59,7 @@ func (s *Settlement) Settle(ctx context.Context, attempt payment.Attempt) error 
 	}
 
 	_, err := s.store.ApplyResult(ctx, params)
-	return err
+	return outcome, err
 }
 
 func (s *Settlement) callProvider(ctx context.Context, attempt payment.Attempt) (SettlementOutcome, string) {

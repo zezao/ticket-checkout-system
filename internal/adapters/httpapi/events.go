@@ -16,6 +16,8 @@ type handlers struct {
 	catalog      Catalog
 	reservations Reservations
 	payments     Payments
+	rateLimiter  RateLimiter
+	metrics      Metrics
 	logger       *slog.Logger
 }
 
@@ -102,6 +104,9 @@ func (h *handlers) listSeats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) internalError(w http.ResponseWriter, r *http.Request, operation string, err error) {
+	if h.metrics != nil && errors.Is(err, app.ErrConsistency) {
+		h.metrics.ConsistencyError()
+	}
 	h.logger.ErrorContext(r.Context(), "request failed",
 		"operation", operation,
 		"error", err,
