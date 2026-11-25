@@ -1,0 +1,35 @@
+#!/bin/sh
+subject=$(head -n 1 "$1")
+
+case "$subject" in
+"Merge "?* | "fixup! "?* | "squash! "?*) exit 0 ;;
+esac
+
+case "$subject" in
+"doc: "?* | "feat: "?* | "fix: "?*) ;;
+*)
+	printf 'error: commit subject must start with doc:, feat:, or fix:\n' >&2
+	printf '  got: %s\n' "$subject" >&2
+	printf '  see AGENTS.md for the commit message format\n' >&2
+	exit 1
+	;;
+esac
+
+summary=${subject#*: }
+
+case "$summary" in
+[abcdefghijklmnopqrstuvwxyz]*) ;;
+*)
+	printf 'error: commit summary must start with a lowercase letter:\n' >&2
+	printf '  got: %s\n' "$summary" >&2
+	exit 1
+	;;
+esac
+
+case "$subject" in
+*.)
+	printf 'error: commit subject must not end with a period\n' >&2
+	printf '  got: %s\n' "$subject" >&2
+	exit 1
+	;;
+esac

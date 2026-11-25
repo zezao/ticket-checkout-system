@@ -8,7 +8,7 @@ BENCH_VUS ?= 50
 BENCH_DURATION ?= 30s
 
 .PHONY: build run-api run-worker test test-unit test-integration lint fmt vet tidy \
-	compose-up compose-down migrate migrate-down seed \
+	compose-up compose-down migrate migrate-down seed hooks \
 	bench bench-seed bench-hot bench-uniform bench-skewed bench-seatmap
 
 build:
@@ -41,6 +41,9 @@ vet:
 
 tidy:
 	$(GO) mod tidy
+
+hooks:
+	git config core.hooksPath .githooks
 
 compose-up:
 	docker compose up --build
