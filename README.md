@@ -1,11 +1,11 @@
 # Ticket Checkout System
 
 A Go ticket-checkout backend where PostgreSQL alone decides who owns a seat. The
-repository implements Phases 1 to 4: the foundation, seat reservation, payments
-with an idempotent settlement worker and in-process mock provider, and the Redis
-cache/rate limiter, outbox relay, Prometheus metrics and OpenTelemetry tracing.
-Customers browse events, hold a seat, pay through the mock, and receive a
-confirmed order. Benchmarks and deployment arrive in Phases 5 and 6.
+repository implements Phases 1 to 5: the foundation, seat reservation, payments
+with an idempotent settlement worker and in-process mock provider, the Redis
+cache/rate limiter, outbox relay, Prometheus metrics and OpenTelemetry tracing,
+and a benchmark baseline. Customers browse events, hold a seat, pay through the
+mock, and receive a confirmed order. Deployment arrives in Phase 6.
 
 ## Architecture
 
@@ -352,6 +352,23 @@ Run the transition fuzzer for longer with:
 go test -fuzz=FuzzHoldTransitions -fuzztime=30s ./internal/domain/reservation
 ```
 
+## Benchmarks
+
+The protocol and baseline live in [`docs/benchmarks/`](docs/benchmarks/README.md).
+Reproduce the baseline with:
+
+```sh
+docker compose up -d --build
+BENCH_VUS=50 BENCH_DURATION=30s make bench
+```
+
+The harness runs four scenarios — one hot seat, uniform seats, a skewed
+distribution and the cached seat map — resets the benchmark event between runs,
+and writes k6 output plus pool, PostgreSQL CPU and outbox-lag samples under
+`docs/benchmarks/raw/`. The [baseline](docs/benchmarks/2026-11-24-baseline.md)
+found the hot-seat row lock, pgx pool saturation and the outbox relay's 100
+rows/s ceiling as the main limits. No pass/fail thresholds are set.
+
 ## Project layout
 
 ```text
@@ -375,7 +392,9 @@ internal/
 migrations/             numbered golang-migrate files
 migrations/seed/        local development data
 test/integration/       Testcontainers integration, concurrency, fault and Redis suites
+bench/                  k6 scenarios, benchmark seed and runner
 docs/adr/               architecture decision records
+docs/benchmarks/        benchmark protocol, baseline and raw runs
 docs/runbooks/          operational procedures
 deploy/                 infrastructure as code (Phase 6)
 ```
@@ -394,7 +413,7 @@ deploy/                 infrastructure as code (Phase 6)
 - [x] Phase 2: seat reservation, expiry sweeper, outbox writes, invariant checker, ADRs
 - [x] Phase 3: payments, settlement worker, mock provider, fault injection
 - [x] Phase 4: Redis cache, rate limiting, outbox relay, metrics, tracing
-- [ ] Phase 5: benchmarks
+- [x] Phase 5: benchmarks
 - [ ] Phase 6: AWS deployment
 
 The implementation spec is at `docs/spec/ticket-checkout-system.md`.

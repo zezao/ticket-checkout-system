@@ -96,5 +96,18 @@ services:
       - "9090:9090"
     command: ["/app/worker"]
 
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: ["bench"]
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      BASE_URL: http://api:8080
+      EVENT_ID: ${BENCH_EVENT_ID:-0199b000-0000-7000-8000-000000000001}
+    volumes:
+      - ./bench:/scripts:ro
+    command: ["run", "/scripts/hold.js"]
+
 volumes:
   postgres-data:
