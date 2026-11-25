@@ -367,7 +367,10 @@ distribution and the cached seat map — resets the benchmark event between runs
 and writes k6 output plus pool, PostgreSQL CPU and outbox-lag samples under
 `docs/benchmarks/raw/`. The [baseline](docs/benchmarks/2026-11-24-baseline.md)
 found the hot-seat row lock, pgx pool saturation and the outbox relay's 100
-rows/s ceiling as the main limits. No pass/fail thresholds are set.
+rows/s ceiling as the main limits. A follow-up made the relay backlog-aware:
+uniform outbox lag fell from ~26 s to ~1.1 s without losing hold throughput
+([tuning report](docs/benchmarks/2026-11-24-outbox-relay-tuning.md)). No
+pass/fail thresholds are set.
 
 ## Project layout
 

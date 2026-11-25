@@ -1,0 +1,139 @@
+ Container ticket-checkout-system-k6-run-f711081c988a Creating 
+ Container ticket-checkout-system-k6-run-f711081c988a Created 
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: /scripts/hold.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 50 max VUs, 1m0s max duration (incl. graceful stop):
+              * holds: 50 looping VUs for 30s (gracefulStop: 30s)
+
+
+running (0m01.0s), 50/50 VUs, 5065 complete and 0 interrupted iterations
+holds   [   3% ] 50 VUs  01.0s/30s
+
+running (0m02.0s), 50/50 VUs, 10385 complete and 0 interrupted iterations
+holds   [   7% ] 50 VUs  02.0s/30s
+
+running (0m03.0s), 50/50 VUs, 15592 complete and 0 interrupted iterations
+holds   [  10% ] 50 VUs  03.0s/30s
+
+running (0m04.0s), 50/50 VUs, 20843 complete and 0 interrupted iterations
+holds   [  13% ] 50 VUs  04.0s/30s
+
+running (0m05.0s), 50/50 VUs, 26030 complete and 0 interrupted iterations
+holds   [  17% ] 50 VUs  05.0s/30s
+
+running (0m06.0s), 50/50 VUs, 31272 complete and 0 interrupted iterations
+holds   [  20% ] 50 VUs  06.0s/30s
+
+running (0m07.0s), 50/50 VUs, 36530 complete and 0 interrupted iterations
+holds   [  23% ] 50 VUs  07.0s/30s
+
+running (0m08.0s), 50/50 VUs, 41878 complete and 0 interrupted iterations
+holds   [  27% ] 50 VUs  08.0s/30s
+
+running (0m09.0s), 50/50 VUs, 47048 complete and 0 interrupted iterations
+holds   [  30% ] 50 VUs  09.0s/30s
+
+running (0m10.0s), 50/50 VUs, 52200 complete and 0 interrupted iterations
+holds   [  33% ] 50 VUs  10.0s/30s
+
+running (0m11.0s), 50/50 VUs, 57464 complete and 0 interrupted iterations
+holds   [  37% ] 50 VUs  11.0s/30s
+
+running (0m12.0s), 50/50 VUs, 62301 complete and 0 interrupted iterations
+holds   [  40% ] 50 VUs  12.0s/30s
+
+running (0m13.0s), 50/50 VUs, 67617 complete and 0 interrupted iterations
+holds   [  43% ] 50 VUs  13.0s/30s
+
+running (0m14.0s), 50/50 VUs, 72777 complete and 0 interrupted iterations
+holds   [  47% ] 50 VUs  14.0s/30s
+
+running (0m15.0s), 50/50 VUs, 78070 complete and 0 interrupted iterations
+holds   [  50% ] 50 VUs  15.0s/30s
+
+running (0m16.0s), 50/50 VUs, 83287 complete and 0 interrupted iterations
+holds   [  53% ] 50 VUs  16.0s/30s
+
+running (0m17.0s), 50/50 VUs, 88573 complete and 0 interrupted iterations
+holds   [  57% ] 50 VUs  17.0s/30s
+
+running (0m18.0s), 50/50 VUs, 93607 complete and 0 interrupted iterations
+holds   [  60% ] 50 VUs  18.0s/30s
+
+running (0m19.0s), 50/50 VUs, 98581 complete and 0 interrupted iterations
+holds   [  63% ] 50 VUs  19.0s/30s
+
+running (0m20.0s), 50/50 VUs, 103772 complete and 0 interrupted iterations
+holds   [  67% ] 50 VUs  20.0s/30s
+
+running (0m21.0s), 50/50 VUs, 109003 complete and 0 interrupted iterations
+holds   [  70% ] 50 VUs  21.0s/30s
+
+running (0m22.0s), 50/50 VUs, 114229 complete and 0 interrupted iterations
+holds   [  73% ] 50 VUs  22.0s/30s
+
+running (0m23.0s), 50/50 VUs, 119451 complete and 0 interrupted iterations
+holds   [  77% ] 50 VUs  23.0s/30s
+
+running (0m24.0s), 50/50 VUs, 124710 complete and 0 interrupted iterations
+holds   [  80% ] 50 VUs  24.0s/30s
+
+running (0m25.0s), 50/50 VUs, 129702 complete and 0 interrupted iterations
+holds   [  83% ] 50 VUs  25.0s/30s
+
+running (0m26.0s), 50/50 VUs, 135018 complete and 0 interrupted iterations
+holds   [  87% ] 50 VUs  26.0s/30s
+
+running (0m27.0s), 50/50 VUs, 140159 complete and 0 interrupted iterations
+holds   [  90% ] 50 VUs  27.0s/30s
+
+running (0m28.0s), 50/50 VUs, 145252 complete and 0 interrupted iterations
+holds   [  93% ] 50 VUs  28.0s/30s
+
+running (0m29.0s), 50/50 VUs, 150287 complete and 0 interrupted iterations
+holds   [  97% ] 50 VUs  29.0s/30s
+
+running (0m30.0s), 50/50 VUs, 155609 complete and 0 interrupted iterations
+holds   [ 100% ] 50 VUs  30.0s/30s
+
+
+  █ TOTAL RESULTS 
+
+    CUSTOM
+    hold_conflict..................: 153676 5119.472677/s
+    hold_duration..................: avg=9.32ms  med=8.35ms  p(50)=8.35ms  p(90)=14.27ms p(95)=17.36ms p(99)=22.39ms max=55.1ms 
+    hold_outcomes..................: 155753 5188.664644/s
+    hold_success...................: 2077   69.191967/s
+    release_duration...............: avg=11.73ms med=12.27ms p(50)=12.27ms p(90)=17.01ms p(95)=18.46ms p(99)=22.09ms max=30.24ms
+
+    HTTP
+    http_req_duration..............: avg=9.36ms  med=8.37ms  p(50)=8.37ms  p(90)=14.39ms p(95)=17.39ms p(99)=22.38ms max=55.1ms 
+      { expected_response:true }...: avg=9.36ms  med=8.37ms  p(50)=8.37ms  p(90)=14.39ms p(95)=17.39ms p(99)=22.38ms max=55.1ms 
+    http_req_failed................: 0.00%  0 out of 157831
+    http_reqs......................: 157831 5257.889925/s
+
+    EXECUTION
+    iteration_duration.............: avg=9.61ms  med=8.53ms  p(50)=8.53ms  p(90)=14.88ms p(95)=18.15ms p(99)=23.73ms max=55.17ms
+    iterations.....................: 155753 5188.664644/s
+    vus............................: 50     min=50          max=50
+    vus_max........................: 50     min=50          max=50
+
+    NETWORK
+    data_received..................: 37 MB  1.2 MB/s
+    data_sent......................: 42 MB  1.4 MB/s
+
+
+
+
+running (0m30.0s), 00/50 VUs, 155753 complete and 0 interrupted iterations
+holds ✓ [ 100% ] 50 VUs  30s

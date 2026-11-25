@@ -63,7 +63,7 @@ trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT INT TERM
 
 echo "running ${scenario}: ${vus} VUs for ${duration}"
 set +e
-docker compose --profile bench run --rm \
+docker compose --profile bench run --rm --no-deps \
   -e "SCENARIO=${scenario}" -e "VUS=${vus}" -e "DURATION=${duration}" \
   k6 run "/scripts/${script}" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee "$out/k6.txt"
 k6_status=${PIPESTATUS[0]}

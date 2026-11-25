@@ -1,7 +1,7 @@
-scenario=seatmap
-commit=ceea519
+scenario=hot
+commit=5e23710
 vus=50
 duration=30s
 event_id=0199b000-0000-7000-8000-000000000001
-started_at=20261125T010439Z
+started_at=20261125T011455Z
 host=Linux 6.18.33.2-microsoft-standard-WSL2 x86_64

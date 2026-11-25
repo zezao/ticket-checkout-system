@@ -23,7 +23,8 @@ import (
 const (
 	invariantCheckInterval = time.Minute
 	settlementInterval     = time.Second
-	outboxInterval         = time.Second
+	outboxIdleInterval     = time.Second
+	outboxBusyInterval     = time.Millisecond
 	outboxLease            = 30 * time.Second
 )
 
@@ -109,7 +110,7 @@ func run(logger *slog.Logger) error {
 
 	outboxStore := postgres.NewOutboxStore(pool)
 	relay := worker.NewOutboxRelay(outboxStore, outboxHandlers, logger,
-		outboxLease, outboxInterval, metrics)
+		outboxLease, outboxIdleInterval, outboxBusyInterval, metrics)
 
 	sweeper := worker.NewSweeper(holds, logger, cfg.SweepInterval, metrics)
 	checker := worker.NewChecker(postgres.NewInvariantChecker(pool), logger,
@@ -131,7 +132,8 @@ func run(logger *slog.Logger) error {
 	logger.Info("worker started",
 		"sweep_interval", cfg.SweepInterval.String(),
 		"settlement_interval", settlementInterval.String(),
-		"outbox_interval", outboxInterval.String(),
+		"outbox_idle_interval", outboxIdleInterval.String(),
+		"outbox_busy_interval", outboxBusyInterval.String(),
 		"payment_lease", cfg.PaymentLease.String(),
 		"invariant_check_interval", invariantCheckInterval.String(),
 		"metrics_addr", cfg.MetricsAddr,

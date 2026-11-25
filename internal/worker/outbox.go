@@ -10,7 +10,7 @@ import (
 	"github.com/zezao/ticket-checkout-system/internal/observability"
 )
 
-const outboxBatchSize = 100
+const outboxBatchSize = 1000
 
 // OutboxHandler consumes one outbox message. Handlers must be idempotent.
 type OutboxHandler interface {
@@ -25,62 +25,67 @@ type OutboxMetrics interface {
 
 // OutboxRelay publishes outbox rows with at-least-once delivery.
 type OutboxRelay struct {
-	store    app.OutboxStore
-	handlers map[string]OutboxHandler
-	logger   *slog.Logger
-	lease    time.Duration
-	interval time.Duration
-	metrics  OutboxMetrics
+	store        app.OutboxStore
+	handlers     map[string]OutboxHandler
+	logger       *slog.Logger
+	lease        time.Duration
+	idleInterval time.Duration
+	busyInterval time.Duration
+	metrics      OutboxMetrics
 }
 
-// NewOutboxRelay builds the outbox relay loop.
+// NewOutboxRelay builds the outbox relay loop. A full claim switches the next
+// tick from idleInterval to busyInterval until the backlog drops.
 func NewOutboxRelay(
 	store app.OutboxStore,
 	handlers map[string]OutboxHandler,
 	logger *slog.Logger,
-	lease, interval time.Duration,
+	lease, idleInterval, busyInterval time.Duration,
 	metrics OutboxMetrics,
 ) *OutboxRelay {
 	return &OutboxRelay{
-		store:    store,
-		handlers: handlers,
-		logger:   logger,
-		lease:    lease,
-		interval: interval,
-		metrics:  metrics,
+		store:        store,
+		handlers:     handlers,
+		logger:       logger,
+		lease:        lease,
+		idleInterval: idleInterval,
+		busyInterval: busyInterval,
+		metrics:      metrics,
 	}
 }
 
 // Run relays outbox rows until ctx is cancelled.
 func (r *OutboxRelay) Run(ctx context.Context) {
-	r.tick(ctx)
-
-	ticker := time.NewTicker(r.interval)
-	defer ticker.Stop()
-
 	for {
+		claimed := r.tick(ctx)
+		delay := r.idleInterval
+		if claimed >= outboxBatchSize {
+			delay = r.busyInterval
+		}
+
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			r.tick(ctx)
+		case <-timer.C:
 		}
 	}
 }
 
-func (r *OutboxRelay) tick(ctx context.Context) {
+func (r *OutboxRelay) tick(ctx context.Context) int {
 	messages, err := r.store.ClaimOutbox(ctx, r.lease, outboxBatchSize)
 	if err != nil {
 		if ctx.Err() == nil {
 			r.logger.ErrorContext(ctx, "claim outbox failed", "error", err)
 		}
-		return
+		return 0
 	}
 
 	published := make([]int64, 0, len(messages))
 	for _, message := range messages {
 		if ctx.Err() != nil {
-			return
+			return len(messages)
 		}
 
 		handler := r.handlers[message.Topic]
@@ -125,11 +130,12 @@ func (r *OutboxRelay) tick(ctx context.Context) {
 		if ctx.Err() == nil {
 			r.logger.ErrorContext(ctx, "read outbox lag failed", "error", err)
 		}
-		return
+		return len(messages)
 	}
 	if r.metrics != nil {
 		r.metrics.OutboxLag(lag)
 	}
+	return len(messages)
 }
 
 // NoopHandler acknowledges messages without side effects.

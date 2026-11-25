@@ -103,3 +103,8 @@ worker, PostgreSQL, Redis and k6 all run in containers on the same host.
 ## Runs
 
 - [Baseline, 2026-11-24](2026-11-24-baseline.md)
+- [Outbox relay tuning, 2026-11-24](2026-11-24-outbox-relay-tuning.md)
+
+The relay is backlog-aware: 1,000-row batches, a 1 s idle cadence, and immediate
+continuation while a full batch is being drained. The tuning report shows the
+before/after.

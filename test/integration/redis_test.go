@@ -62,7 +62,7 @@ func TestSeatMapCacheHitAndRelayInvalidation(t *testing.T) {
 		"order.confirmed": worker.NoopHandler{},
 	}
 	relay := worker.NewOutboxRelay(outboxStore, handlers, discardLogger(),
-		time.Second, 50*time.Millisecond, nil)
+		time.Second, 50*time.Millisecond, 50*time.Millisecond, nil)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})

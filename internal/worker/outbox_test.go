@@ -73,7 +73,7 @@ func TestOutboxRelayPublishesSuccessfulHandlers(t *testing.T) {
 	metrics := &stubOutboxMetrics{}
 
 	relay := NewOutboxRelay(store, map[string]OutboxHandler{"seat.changed": handler},
-		workerTestLogger(), time.Second, time.Minute, metrics)
+		workerTestLogger(), time.Second, time.Minute, 50*time.Millisecond, metrics)
 	relay.tick(context.Background())
 
 	if len(handler.handled) != 2 || handler.handled[0] != 1 || handler.handled[1] != 3 {
@@ -98,7 +98,7 @@ func TestOutboxRelayClaimError(t *testing.T) {
 	metrics := &stubOutboxMetrics{}
 
 	relay := NewOutboxRelay(store, map[string]OutboxHandler{"seat.changed": handler},
-		workerTestLogger(), time.Second, time.Minute, metrics)
+		workerTestLogger(), time.Second, time.Minute, 50*time.Millisecond, metrics)
 	relay.tick(context.Background())
 
 	if len(handler.handled) != 0 {
@@ -118,7 +118,7 @@ func TestOutboxRelayEmptyBatchStillRecordsLag(t *testing.T) {
 	store := &stubOutboxStore{lag: 2 * time.Second}
 	metrics := &stubOutboxMetrics{}
 
-	relay := NewOutboxRelay(store, nil, workerTestLogger(), time.Second, time.Minute, metrics)
+	relay := NewOutboxRelay(store, nil, workerTestLogger(), time.Second, time.Minute, 50*time.Millisecond, metrics)
 	relay.tick(context.Background())
 
 	if len(store.published) != 0 {
@@ -140,7 +140,7 @@ func TestOutboxRelayRecordsConsistencyErrors(t *testing.T) {
 	metrics := &stubOutboxMetrics{}
 
 	relay := NewOutboxRelay(store, map[string]OutboxHandler{"seat.changed": handler},
-		workerTestLogger(), time.Second, time.Minute, metrics)
+		workerTestLogger(), time.Second, time.Minute, 50*time.Millisecond, metrics)
 	relay.tick(context.Background())
 
 	if metrics.consistencyCalls != 1 {

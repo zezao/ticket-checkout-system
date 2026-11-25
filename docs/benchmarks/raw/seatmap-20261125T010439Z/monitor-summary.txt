@@ -1,6 +1,0 @@
-samples=16
-pool_max_acquired=14
-pool_wait_seconds_delta=0.613
-outbox_lag_max_seconds=0.000
-postgres_cpu_max_percent=55.34
-postgres_cpu_avg_percent=49.48
